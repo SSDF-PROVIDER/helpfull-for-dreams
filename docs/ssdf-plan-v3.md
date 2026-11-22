@@ -688,3 +688,106 @@ Sections 2–8 describe the system logic. This section describes what each perso
 | Survey | No identity stored; token and captcha enforced; aggregates correct |
 | Operations | Backup restored to staging; alerts fire; works on a low-end Android phone on throttled 3G |
 
+
+---
+
+## 20. Production and money safety (real-time review)
+
+Review lens: **what goes wrong when the app is live, many people use it at the same time, and real rupees move.**
+Sections 1–19 describe the design. This section lists what can *break in production* and how the design must handle it.
+Severity:
+- 🔴 can lose money or pay the wrong person
+- 🟠 can block students or corrupt records
+- 🟡 operational pain
+
+### B1. Paying twice or paying wrongly 🔴
+
+| # | What can happen live | Why the current plan misses it | Fix to add |
+|---|---|---|---|
+| 1 | **Double payout.** An approver double-clicks, two panel votes land in the same second, or a retry fires after a timeout even though the bank already paid. | The idempotency key is "per payout", and a retry may create a new payout. | **One payout per claim, enforced by the database** (unique claim_id). Status changes only from APPROVED → PAYOUT_PROCESSING, in one locked step. Idempotency key = claim id. |
+| 2 | **Timeout: "did it go or not?"** The gateway doesn't answer within 30 s. | The plan says "retry". A blind retry is how double payments happen. | New status **PAYOUT_UNKNOWN**: ask the gateway's status API before any retry. **Never retry unless the gateway confirms the payout failed.** |
+| 3 | **Bank reverses a payout days later** (account closed, wrong IFSC). | There's no PAID → REVERSED path. The bill clock and block would hit a student who never got the money. | Add the **REVERSED** status: ledger credit back, allowance released, bill clock cancelled, student asked to fix bank details. |
+| 4 | **Webhooks lost, late or out of order** ("processed" arrives before "queued"). | The plan relies on webhooks alone. | Store events by id and ignore duplicates. Status only moves forward, never back. Check any payout stuck in PROCESSING with the gateway every 10 min. |
+| 5 | **Money says ₹1 lakh, but the payout account is empty.** Donor payments settle into the bank 2 days later (T+2), minus fees and GST, and must then be moved into the payout account (e.g. RazorpayX). | The plan has a single "pool". In reality there are **3 balances**: ledger, gateway settlement and payout account. | Show "**available to pay**" = the real payout-account balance. Top-ups become usable only **after settlement**. Fees and GST go in the ledger. A daily **3-way reconciliation**: ledger vs. gateway vs. bank statement. |
+| 6 | **Donor chargeback** after the money was already paid to students. | Not covered. | Ledger entry **CHARGEBACK**. Trustees are alerted. A small reserve (e.g. 5% of the pool) is never paid out. |
+| 7 | **Rounding errors** from ₹ with decimals. | Not stated. | All amounts are stored as **whole paise (integers)**, never decimals. |
+| 8 | **Notification before the money moves** ("You're paid!" goes out, then the payout fails). | Not stated. | Notifications are sent **only after the database commit and gateway confirmation**. |
+
+### B2. Two things at the same time (race conditions) 🔴🟠
+
+| # | Live situation | Fix |
+|---|---|---|
+| 9 | Two approvals at once both see "₹20,000 in pool" and both reserve → pool goes negative | Reservation is a single locked transaction; the database refuses a negative available balance |
+| 10 | A student submits from 2 tabs or phones at once → both pass the yearly cap | Lock per student at submit; the cap is checked inside the same transaction |
+| 11 | A student submits at the exact second the bill block starts | The block is checked inside the submit transaction, not only on page open |
+| 12 | Panel: 2nd and 3rd votes arrive together, two "winners" | Votes are counted under a lock; the first decision to commit wins and later votes are recorded but ignored |
+| 13 | Same person signs a "2-trustee" action using two accounts (e.g. trustee + approver) | Check **distinct persons**, not distinct accounts |
+| 14 | Approver removed while they hold a panel vote | Votes from deactivated people are dropped and the panel re-drawn |
+| 15 | A trustee lowers the cap while claims are already reserved above it | New rules apply only to **new** claims; in-flight claims keep their rule version (already planned; enforce it) |
+
+### B3. When outside services fail 🟠
+
+| # | Failure | Effect | Fix |
+|---|---|---|---|
+| 16 | **SMS provider down** | Nobody gets an OTP: no logins, no approvals, no bill reminders | OTP **falls back to email**; staff use an authenticator app. If reminders failed, **pause the bill-block clock automatically.** |
+| 17 | **Payment gateway down** | Payouts stall | Claims wait in a queue and are sent automatically when it's back. Emergency claims show "pay manually" with a 2-trustee record. |
+| 18 | **Virus-scan service down** | Uploads stuck | Accept into quarantine and show "checking". Approvers can't open the file until the scan passes. |
+| 19 | **App down or a scheduled job missed** (reminders, day-14 block, expiry, SLA) | Wrong blocks, or missed expiry | Jobs are **safe to re-run** and **catch up** after downtime. Deadlines are based on stored dates, not on "the job ran today". |
+| 20 | **Deploy during a payout** | Half-done payout | Use the **outbox pattern**: write the payout intent to the database first, and a separate worker sends it. A restart resumes; it never repeats. |
+
+### B4. Attacks and insider risk in production 🔴
+
+| # | Risk | Fix |
+|---|---|---|
+| 21 | **Payout API key stolen** = the fund can be drained | Keys kept in a secret manager, never in code. RazorpayX limited to the server's **IP whitelist**. A dashboard approval rule in RazorpayX itself for payouts over ₹X. Separate test and live keys. |
+| 22 | **Developer or database admin edits a claim to APPROVED** | The payout worker re-checks the full approval record before paying (votes, OTP proof, limits). Production database access needs 2 people. The hash chain detects edits. |
+| 23 | **SIM swap or phone change → bank change → steal payout** | Changing a mobile number is treated like a bank change: 48 h cooling-off, alert to the old email and number |
+| 24 | **Admin and student collude** (admin edits the student's mobile or bank) | Admin can't edit contact or bank details; only the student can, with OTP |
+| 25 | **Webhook replay** (attacker resends an old "success") | Signature + event-id dedupe + reject events older than 5 min |
+| 26 | **Staging sends real SMS or uses live money keys** | Staging uses gateway **test keys only** and fake SMS. A startup check refuses to start if the environment and keys don't match. |
+
+### B5. Safety switches (circuit breakers and kill switch) 🔴
+
+```
+ ┌─────────────────────────── CIRCUIT BREAKERS ──────────────────────────┐
+ │ • Daily payout ceiling      e.g. ₹1,00,000/day  → stop + alert        │
+ │ • Rate ceiling              e.g. > 20 payouts/hour → stop + alert     │
+ │ • Same bank account paid > 3 times in 7 days → hold + review          │
+ │ • Reconciliation mismatch   → payouts auto-PAUSED until 2 trustees OK │
+ └───────────────────────────────────────────────────────────────────────┘
+ KILL SWITCH: any 1 trustee can PAUSE ALL PAYOUTS instantly (one tap + OTP)
+              resuming needs 2 trustees. Students see "payments delayed".
+```
+
+### B6. Time and calendar bugs 🟠
+
+| # | Bug | Fix |
+|---|---|---|
+| 27 | Server runs in UTC, so "day 14" ends at 5:30 AM IST, or a day early or late | All deadlines are calculated in **Asia/Kolkata** and stored with the timezone |
+| 28 | June 1 rollover at midnight while claims are in progress | The academic year is stored on each claim at submit; the rollover job doesn't touch open claims |
+| 29 | Fee deadline peaks (semester start: hundreds of claims in one week) | Load-test the expected peak; trustees can temporarily raise approver daily caps; institution fees with due dates go first |
+
+### B7. When something does go wrong (incident handling) 🟡
+
+| Situation | Runbook (first 3 steps) |
+|---|---|
+| Double or wrong payout | Kill switch → check the gateway record → recovery request to the student + ledger RECOVERY entry |
+| Payout stuck > 24 h | Ask the gateway for its status → contact the gateway with the reference → tell the student |
+| Reconciliation mismatch | Payouts auto-paused → compare the 3 balances → 2 trustees sign off before resuming |
+| Data leak | Revoke access → find the scope from the audit log → **notify the Data Protection Board and affected people promptly** (DPDP Act) |
+| Gateway or SMS down | Status banner → fallbacks on (B3) → notify trustees |
+
+- **Who gets alerted:** 2 named tech volunteers + all trustees. There's no 24/7 staff, so set expectations: payouts are processed **only 9 AM–9 PM IST**, which also makes night-time fraud harder.
+- **Restoring a backup:** after restoring, **re-sync the payout status from the gateway** before reopening. A backup can "forget" payouts that really happened.
+
+### B8. Go-live safely (soft launch)
+
+```
+ Week 1–4  PILOT   1 department · claims ≤ ₹2,000 · daily ceiling ₹20,000
+                   every payout also checked by a trustee next morning
+ Week 5–8  WIDER   all departments · ≤ ₹10,000 · ceiling ₹50,000
+ Week 9+   FULL    normal limits, circuit breakers stay on forever
+ Before pilot: gateway sandbox drills for every row in B1–B3
+               (double-click, timeout, reversal, webhook loss, SMS down, kill switch)
+```
+
