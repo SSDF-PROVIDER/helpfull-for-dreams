@@ -1,7 +1,7 @@
 # SSDF fund app: design plan v0 (manual payments)
 
 ## Context
-SSDF is an alumni-funded welfare fund for students of a tier-2 city college. Students claim money for academic, travel, living, digital, health, career and emergency needs. Small claims are approved automatically. Volunteer **approvers** decide the rest. **Sponsors** fund and control the money. **Admin** manages student records only. Every action and rupee can be traced.
+SSDF is an alumni-funded welfare fund for students of a tier-3 city college. Students claim money for academic, travel, living, digital, health, career and emergency needs. Small claims are approved automatically. Volunteer **approvers** decide the rest. **Sponsors** fund and control the money. **Admin** manages student records only. Every action and rupee can be traced.
 
 This is the complete plan for the **first release (v0)**. It combines:
 - the design plan v3 (`docs/ssdf-plan-v3.md`), and
