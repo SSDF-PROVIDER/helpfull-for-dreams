@@ -23,7 +23,7 @@ It is a design document; no code exists yet.
 **Decisions made**
 - Approvers decide every claim that isn't auto-approved. The sponsor handles money and settings only.
 - The sponsor creates approvers and sets their limits. The **Owner** role creates sponsors.
-- Sign-up uses **passing year**. Year of study is calculated, not stored.
+- Sign-up is **automatic** (no admin approval): a roll-list match activates the account. The passing year comes from the roll list. There is no program and no year of study.
 - **Bill rule:** advance claims need a bill within 14 days (configurable). After that, new claims are blocked until the bill is uploaded. The block is checked in real time.
 - **Traceability:** a write-once audit log, a timeline for every claim, a double-entry money ledger, versioned documents and versioned rules.
 - **Two-person rule** for every sensitive action (section 1).
@@ -58,12 +58,11 @@ Status key used in this plan:
 | Submit claim, upload bill, appeal, view own timeline, raise ticket | ✔ | | | | |
 | Approve / reject / request info (within own limit) | | ✔ | fallback (+ 2nd person) | | |
 | Verify bills | | ✔ | ✔ | | |
-| See student name, ID, program, year | own | ✔ | ✔ | ✔ | |
+| See student name, ID, passing year | own | ✔ | ✔ | ✔ | |
 | See student mobile, email, full bank number | own | ✖ (last 4 digits) | ✔ | ✖ | |
-| See ID card image | own | | | during enrolment | |
-| Edit student records (ID, program, passing year, status) | | | | ✔ | |
-| Edit student name / contact after enrolment | | | 2nd approval | with 2nd approval | |
-| Confirm enrolment, import roll list | | | | ✔ | |
+| Edit student records (ID, passing year, status) | | | | ✔ | |
+| Edit student name / contact after sign-up | | | 2nd approval | with 2nd approval | |
+| Import roll list | | | | ✔ | |
 | Categories, amounts, caps, auto-approve rule, grace days | | | ✔ (2 persons) | | |
 | Record donations, pay claims, confirm payments, import bank statement | | | ✔ | | |
 | Refunds, write-offs, reconciliation | | | ✔ (2 persons) | | |
@@ -90,60 +89,47 @@ Status key used in this plan:
 - **Fund Rules policy:** a written policy (eligibility, categories, caps, approver code of conduct) approved by the sponsors. The app enforces it and does not invent rules. 🟡 sponsors
 - **Grievance officer:** one named sponsor or owner.
 - **Account recovery** (everyone): forgot password = email + mobile OTP. Lost or changed phone = admin identity check + 48 h cooling-off + alert to the old contacts.
-- **Staff offboarding:** deactivating an approver moves their open queue back to round-robin. Deactivating an admin returns pending enrolments to the shared queue.
+- **Staff offboarding:** deactivating an approver moves their open queue back to round-robin. Deactivating an admin needs no hand-over, because sign-up has no approval queue.
 - **Minimum team:** at least **2 owners and 2 sponsors**, or the two-person actions can't happen.
 
 ---
 
-## 2. Student sign-up and the passing year
+## 2. Student sign-up (automatic, no admin approval)
 
 ```
- Fill form: name, student ID, PROGRAM, PASSING YEAR,
- mobile (main), college email (optional), password
+ Fill form: name, student ID, passing year, mobile (main),
+ college email (optional), password
         │
         ▼
- Student ID already used? ─ Yes ─► "Account exists — log in or contact admin"
+ Student ID already used? ─ Yes ─► "Account exists — log in or contact the fund"
         │ No
-        ▼
- Passing year in valid range? ─ No ─► "For a 4-year course, enter 2027–2030"
-        │ Yes                         (range = this academic year's end
-        ▼                               … + course length − 1, per program)
- Under 18? ─ Yes ─► parent / guardian consent captured 🟡 legal
-        │
         ▼
  OTP on mobile (+ email if given) (rate-limited)
         │
         ▼
- Upload student ID card
-        │
-        ▼
- Matches the college roll list (CSV imported by admin)?
+ Student ID + name + passing year match the college roll list
+ (CSV imported by admin)?
         │ Yes                                  │ No
         ▼                                      ▼
- Admin checks ID image only            Admin checks every field + ID image
-        │                                      │
-        └──────────────┬───────────────────────┘
-                 Approve │  Reject ─► student told why, can fix and resend
-                         ▼              (at most 3 resubmissions, then contact admin)
-                 Status: ACTIVE         Admin target: confirm within 3 working days
+ Status: ACTIVE immediately            "Not found on the college list"
+                                       → cannot sign up; student contacts
+                                         the college or the fund (no admin queue)
 ```
 
-**Program and year of study**
-- Course length is set **per program**, not per department (BE 4 yrs, ME 2, MBA 2, …). Each student links to a program.
-- Year of study is calculated, not stored: `year = course length − (passing year − academic year end)`.
+**Passing year and graduation**
+- The roll list is the source of truth for the passing year. The student can't enter a different one.
+- There is no program, no course length and no stored or calculated year of study. All categories are open to every ACTIVE student, and the proof in each claim decides what gets paid.
 - The academic year starts in June [default].
-
-| Example (Nov 2026, academic year ends 2027, 4-year course) | Year |
-|---|---|
-| Passing 2027 | 4 |
-| Passing 2028 | 3 |
-| Passing 2029 | 2 |
-| Passing 2030 | 1 |
-
-- **Every June:** allowances reset, and eligible categories update automatically.
+- **Every June:** allowances reset.
 - **Before each June rollover:** admin gets a bulk review list of students due to graduate, so students with backlogs aren't wrongly marked GRADUATED.
-- **Year-back, detention or lateral entry:** admin edits the passing year and gives a reason. The change is audited.
+- **Year-back, detention or lateral entry:** admin updates the passing year (or the next roll-list import does) and gives a reason. The change is audited.
 - **After the passing year's academic year ends:** status becomes **GRADUATED**. The student can't make new claims but must still close open bills.
+
+**Impersonation risk (someone signing up with a classmate's ID)**
+- If the roll list has mobile numbers, the OTP number must match it. Otherwise a college-email OTP is used. 🟡 college
+- Claims paid to a student need a verified bank account (48 h cooling-off on changes), and approvers review every non-automatic claim, so a fake account can't easily take money out.
+
+**Under-18 students:** the roll list has no date of birth, so how guardian consent is captured is an open decision. 🟡 legal
 
 **Bank account (checked by hand in v0)**
 - Required only before the first claim paid to the student. Not needed for claims paid to an institution.
@@ -155,10 +141,9 @@ Status key used in this plan:
 
 | Status | Meaning |
 |---|---|
-| PENDING | Waiting for enrolment confirmation |
 | ACTIVE | Can claim |
 | SUSPENDED / HIDDEN | Set by admin. Can't log in or claim. Payments already recorded still finish, and bills are still due. |
-| GRADUATED | Set after admin review. No new claims; open bills still due. |
+| GRADUATED | Set after the passing year ends, after admin review. No new claims; open bills still due. |
 | DROPPED OUT | Set by admin. No new claims; open bills still due. |
 
 ---
@@ -169,7 +154,6 @@ Each category has:
 - Name, group and what it covers
 - Support type (period): monthly, per semester, per year, one-time or per incident
 - Min, Typical and Max amounts (₹), set from the cost survey (section 12)
-- Eligible years of study
 - **Payee type:** student or institution
 - **Allowed claim types**
 - **Health flag:** documents visible only to health-cleared approvers
@@ -235,7 +219,7 @@ Each category has:
         blocked ◄──────┴──────► allowed
            │                       │
            ▼                       ▼
- Clear message + action      1. Category (eligible ones only)
+ Clear message + action      1. Category
  e.g. "Upload bill for       2. Claim type (advance / reimbursement / institution)
  SSDF-2026-000123 to make    3. Purpose, period, amount (≤ allowance, Max)
  new requests" [Upload]      4. Documents (PDF/JPG/PNG, size limit, virus scan)
@@ -557,10 +541,10 @@ Channel order: **in-app → email → SMS**. SMS is used only for OTPs, payments
 
 | To | Events |
 |---|---|
-| Student | OTP (SMS) · enrolment approved/rejected · claim submitted · info requested · approved/partly/rejected · flagged for review · **payment sent with UTR (SMS)** · payment returned by bank (SMS) · bill due day 0/7/12 (SMS on day 12) · blocked (SMS) · bill verified/mismatch · appeal result · recurring claim to confirm · bank or mobile changed (SMS, to old number too) · write-off · allowance reset (June) · graduation warning · ticket replies |
+| Student | OTP (SMS) · claim submitted · info requested · approved/partly/rejected · flagged for review · **payment sent with UTR (SMS)** · payment returned by bank (SMS) · bill due day 0/7/12 (SMS on day 12) · blocked (SMS) · bill verified/mismatch · appeal result · recurring claim to confirm · bank or mobile changed (SMS, to old number too) · write-off · allowance reset (June) · graduation warning · ticket replies |
 | Approver | New claim assigned · Emergency claim (SMS) · SLA near · second approval needed · bill to verify · daily summary |
 | Sponsor | **Ready to pay (daily digest; Emergency immediately by SMS)** · **payment or donation waiting for your confirmation** · **unconfirmed > 3 days** · **unmatched bank statement line** · **"Not received" ticket** · escalated or unassigned claim · waiting for funds · pool low · reconciliation mismatch · payments paused · unaccounted money (day 45) · weekly approver report · monthly impact report |
-| Admin | New sign-ups to confirm · roll-list mismatches · enrolment backlog alert · graduation review list |
+| Admin | Roll-list import mismatches · graduation review list |
 
 - Templates use plain language. Regional languages are still to be decided.
 - All SMS templates must be registered on TRAI DLT before launch.
@@ -601,7 +585,6 @@ Channel order: **in-app → email → SMS**. SMS is used only for OTPs, payments
 
 | Data | Kept for |
 |---|---|
-| ID card image | Enrolment confirmed + 90 days |
 | Bank details and passbook/cheque photo | Graduation + 1 year, or until open claims are closed, whichever is later |
 | Claim documents and bills | 8 years |
 | Payment proofs and bank statements | 8 years |
@@ -629,14 +612,14 @@ Sections 2–8 describe the system logic. This section describes what each perso
 
 ```
  ┌───────────┐   ┌───────────┐   ┌────────────┐   ┌──────────────┐   ┌──────────────┐
- │ Landing   │──►│ Sign up   │──►│ OTP verify │──►│ Upload ID    │──►│ "Waiting for │
- │ Login /   │   │ form      │   │ mobile     │   │ card         │   │ confirmation"│
- │ Sign up   │   │ (program, │   │ (+ email)  │   │              │   │ (status page)│
- └───────────┘   │ passing   │   └────────────┘   └──────────────┘   └──────┬───────┘
-                 │ year)     │                                 SMS: approved │
+ │ Landing   │──►│ Sign up   │──►│ OTP verify │──►│ Roll-list    │──►│ ACTIVE       │
+ │ Login /   │   │ form      │   │ mobile     │   │ match        │   │ (Home)       │
+ │ Sign up   │   │ (ID, pass-│   │ (+ email)  │   │ automatic    │   │              │
+ └───────────┘   │ ing year) │   └────────────┘   └──────────────┘   └──────┬───────┘
+                 │           │                                                │
                  └───────────┘                                              ▼
  ┌─────────────────────────────── HOME ───────────────────────────────────────────┐
- │ Hi Priya · Year 3 · BE CSE                                                     │
+ │ Hi Priya                                                                       │
  │ ⚠ Banner if blocked: "Upload bill for SSDF-2026-000123"  [Upload now]           │
  │ My categories: Books ₹1,200 left · Hostel ₹6,000 left · …                       │
  │ [ Claim fund ]   My claims (3)   Bills due (1)   Notifications   Profile   Help │
@@ -644,7 +627,7 @@ Sections 2–8 describe the system logic. This section describes what each perso
         │ Claim fund
         ▼
  Step 1 Category ─► Step 2 Type ─► Step 3 Amount ─► Step 4 Documents ─► Step 5 Items ─►
- (eligible only)    (advance /      & purpose       (camera or file,    (optional)
+ (all open)         (advance /      & purpose       (camera or file,    (optional)
                      reimbursement /                 bill no., vendor,
                      institution)                    bill date)
  ─► Step 6 Declaration ─► Step 7 Review ─► [Submit] ─► "Submitted: SSDF-2026-000123"
@@ -685,7 +668,7 @@ Sections 2–8 describe the system logic. This section describes what each perso
         │ open claim
         ▼
  ┌──────────────────────── CLAIM REVIEW ──────────────────────────────┐
- │ Student: Priya · 21CS045 · BE CSE · Year 3 · bank ••••4821         │
+ │ Student: Priya · 21CS045 · bank ••••4821         │
  │ ⚠ Flags (if any): "Same bill used in SSDF-2026-000087"             │
  │ Category, type, amount, purpose │ Documents (watermarked viewer)   │
  │ Allowance left · past claims · open bills        │
@@ -733,13 +716,11 @@ Sections 2–8 describe the system logic. This section describes what each perso
 
 ```
  Invite ─► password ─► Authenticator app ─► DASHBOARD
- ├─ Pending sign-ups ─► compare form vs roll list vs ID image ─► [Approve] [Reject + reason]
- ├─ Students ─► search ─► edit ID/program/passing year/status ─► reason ─► step-up
+ ├─ Students ─► search ─► edit ID/passing year/status ─► reason ─► step-up
  │              (name changes need a 2nd admin or sponsor)
  ├─ Graduation review ─► list due to graduate ─► [Graduate] [Keep active + reason]
  ├─ Account recovery ─► identity check for lost phone ─► 48 h cooling-off starts
  ├─ Import roll list (CSV) ─► preview ─► matched / mismatched report ─► confirm
- ├─ Programs ─► add / edit course length
  └─ My actions log
  (No menu items for claims, money or reports.)
 ```
@@ -748,7 +729,7 @@ Sections 2–8 describe the system logic. This section describes what each perso
 
 ```
  Login + Authenticator ─► Sponsors (create/deactivate, 2 owners) · Admins (create/deactivate)
-                       ─► Global settings (academic year start, programs)
+                       ─► Global settings (academic year start)
                        ─► Full audit log · all reports
 ```
 
@@ -761,16 +742,14 @@ Sections 2–8 describe the system logic. This section describes what each perso
 | persons | id, name, mobile, email, encryption_key_ref (encrypted; erasable) |
 | users | id, person_id, role, status, password_hash, totp settings |
 | sessions, otp_attempts | user, device, time, result |
-| programs | name, course_length |
-| students | user_id, student_id (unique), program, passing_year, flagged |
-| roll_list_entries | student_id, name, program, passing_year, import_batch |
-| enrolment_applications | student, attempt_no, status, reviewed_by, reason |
+| students | user_id, student_id (unique), passing_year, flagged |
+| roll_list_entries | student_id, name, passing_year, mobile (if the college gives it), import_batch |
 | bank_accounts / bank_account_versions | student, holder_name, account (encrypted), ifsc, upi_id, proof_file, name_checked_by, verified_at, cooling_off_until |
 | approvers | user_id, limit, daily_cap, active, health_cleared, agreement_version, term_until |
 | approver_conflicts | approver, student, reason |
 | sponsors | user_id |
 | institution_payees | name, bank (encrypted), verified_by (2) |
-| categories / category_versions | group, support_type, min, typical, max, eligible_years, payee_type, claim_types, health |
+| categories / category_versions | group, support_type, min, typical, max, payee_type, claim_types, health |
 | claims | ref, student, category_version, type, amount_requested, amount_approved, status, academic_year, assigned_approver, second_approver, bill_due_at, rule_version, flags, linked_claim |
 | claim_items | claim, description, amount |
 | documents / document_versions | claim, kind (proof/bill), file_key, sha256, bill_no, vendor, bill_date, uploaded_by, scan_status |
@@ -844,7 +823,7 @@ Sections 2–8 describe the system logic. This section describes what each perso
 | Phase | Scope | Est. |
 |---|---|---|
 | 0 | Prerequisites (section 16) + cost survey (before Phase 2), run alongside the build | ongoing |
-| 1 | Auth (TOTP for staff, account recovery), roles, two-person actions, programs, admin records, roll list, personal-data store, audit log with crypto-shredding | 4 wks |
+| 1 | Auth (TOTP for staff, account recovery), roles, two-person actions, admin records, roll list, personal-data store, audit log with crypto-shredding | 4 wks |
 | 2 | Categories, claim form, real-time checks, fraud checks, rules engine, full status map, timeline | 4 wks |
 | 3 | Approver portal: assignment, limits, daily cap, second approval, SLA, appeals, conflicts, health-cleared, approver management, confidentiality agreement, watermarked viewer, tickets | 3 wks |
 | 4 | **Manual money:** donations (record + confirm), ready-to-pay list, record payment, confirm payment, bank statement import and matching, ledger accounts, reservations, waiting-for-funds queue, bank-detail checks and cooling-off, returns, receipts, pause switch, limits, batch export | 2 wks |
@@ -865,7 +844,8 @@ Notifications are built as part of every phase, not left to the end.
 5. Which categories are paid to institutions, and which institutions are registered payees
 6. Which bank, and its statement CSV and bulk-upload formats
 7. How often the bank statement is uploaded (weekly [default] or daily)
-8. Final confirmation of all **[default]** values after the cost survey:
+8. Whether the college roll list includes mobile numbers or emails (needed to stop sign-up with someone else's ID), and how under-18 guardian consent is captured
+9. Final confirmation of all **[default]** values after the cost survey:
    - Two-approver threshold ₹10,000
    - Approver daily cap ₹50,000
    - Bill grace period 14 days
@@ -884,8 +864,8 @@ Notifications are built as part of every phase, not left to the end.
 
 | Area | Test |
 |---|---|
-| Passing year | Year correct across the June boundary; 2-, 4- and 5-year programs; out-of-range year rejected; graduation review list; duplicate student ID rejected |
-| Enrolment | Roll-list match and mismatch paths; 3 resubmissions max; under-18 consent captured |
+| Passing year | Passing year taken from the roll list; graduation at the June boundary; graduation review list; duplicate student ID rejected |
+| Sign-up | Roll-list match → ACTIVE at once; no match → refused; OTP number must match the roll list (if given); no admin step |
 | Account recovery | Forgot password; lost phone → admin check → 48 h cooling-off → old contacts alerted |
 | Real-time block | Clock to day 13 / 14 / 15 → allowed / blocked / blocked; upload → unblocked instantly; mismatch → re-blocked immediately; Emergency always allowed; second advance blocked until first bill verified |
 | Claim types | Reimbursement and institution skip the bill clock; institution payment goes to the payee account |
