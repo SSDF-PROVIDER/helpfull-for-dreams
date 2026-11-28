@@ -99,7 +99,7 @@ Status key used in this plan:
 
 ```
  Fill form: name, student ID, PROGRAM, PASSING YEAR,
- mobile (main), college email (optional), income band, password
+ mobile (main), college email (optional), password
         │
         ▼
  Student ID already used? ─ Yes ─► "Account exists — log in or contact admin"
@@ -144,10 +144,6 @@ Status key used in this plan:
 - **Before each June rollover:** admin gets a bulk review list of students due to graduate, so students with backlogs aren't wrongly marked GRADUATED.
 - **Year-back, detention or lateral entry:** admin edits the passing year and gives a reason. The change is audited.
 - **After the passing year's academic year ends:** status becomes **GRADUATED**. The student can't make new claims but must still close open bills.
-
-**Income band (need-based priority)** 🟡 sponsors
-- At sign-up, students declare a family income band (ranges only, no documents).
-- The lowest band gets first priority in the waiting-for-funds queue, after Emergency (section 6). Caps are the same for everyone in v0.
 
 **Bank account (checked by hand in v0)**
 - Required only before the first claim paid to the student. Not needed for claims paid to an institution.
@@ -207,8 +203,8 @@ Each category has:
 **Caps and allowance**
 - Each category's **Max applies per its support period** (month, semester, year or incident).
 - A student may make **more than one claim per category per period**, up to the period Max.
-- Per student per year: ₹50,000 [default] across all categories. **This is a hard block on the form.**
-- Emergency is outside the yearly cap and has its own cap of ₹25,000 per year [default].
+- **No yearly cap per student.** A student may claim in as many categories as they need (1, 2, 4 or more). Each request is limited only by its category's Max, so the sponsors don't have to decide a per-person ceiling.
+- Emergency follows the same rule: it is limited by its category Max, with no separate yearly cap.
 - Allowance moves through three stages:
 
 | When | Allowance |
@@ -234,7 +230,6 @@ Each category has:
  │  ✖ Any advance PAID with bill overdue (> 14 days)          │
  │  ✖ Any bill MISMATCH not yet fixed (blocks immediately)    │
  │  ✖ An unbilled advance already open (for a new advance)    │
- │  ✖ Yearly cap reached                                      │
  │  ✖ Bank details missing or unverified (student-paid only)  │
  └─────────────────────┬──────────────────────────────────────┘
         blocked ◄──────┴──────► allowed
@@ -242,7 +237,7 @@ Each category has:
            ▼                       ▼
  Clear message + action      1. Category (eligible ones only)
  e.g. "Upload bill for       2. Claim type (advance / reimbursement / institution)
- SSDF-2026-000123 to make    3. Purpose, period, amount (≤ allowance, Max, yearly cap)
+ SSDF-2026-000123 to make    3. Purpose, period, amount (≤ allowance, Max)
  new requests" [Upload]      4. Documents (PDF/JPG/PNG, size limit, virus scan)
                                 + bill number, vendor, bill date
  Emergency is never          5. Optional item list (auto total)
@@ -345,10 +340,10 @@ In v0 the app **does not move money**. People move money in the bank; the app te
        ▼                                     Pool has enough? ─ No ─► WAITING FOR FUNDS
   Sponsor A: "Record donation"                    │ yes              priority when funds arrive:
   amount, mode, bank ref, date, donor             │                  1 Emergency
-  → TOP-xxxx  UNCONFIRMED                         │                  2 Lowest income band 🟡
-       │                                          │                  3 Institution fee with due date
-       ▼                                          │                  4 Oldest approved
-  Confirmed by Sponsor B                          ▼                  (expires after 60 days)
+  → TOP-xxxx  UNCONFIRMED                         │                  2 Institution fee with due date
+       │                                          │                  3 Oldest approved
+       ▼                                          │                  (expires after 60 days)
+  Confirmed by Sponsor B                          ▼
   OR matched on the bank statement         Ledger: RESERVE amount
        │                                          │
        ▼                                          ▼
@@ -643,7 +638,6 @@ Sections 2–8 describe the system logic. This section describes what each perso
  ┌─────────────────────────────── HOME ───────────────────────────────────────────┐
  │ Hi Priya · Year 3 · BE CSE                                                     │
  │ ⚠ Banner if blocked: "Upload bill for SSDF-2026-000123"  [Upload now]           │
- │ Yearly cap: ₹18,000 used of ₹50,000  ▓▓▓▓░░░░░░                                 │
  │ My categories: Books ₹1,200 left · Hostel ₹6,000 left · …                       │
  │ [ Claim fund ]   My claims (3)   Bills due (1)   Notifications   Profile   Help │
  └────────────────────────────────────────────────────────────────────────────────┘
@@ -694,7 +688,7 @@ Sections 2–8 describe the system logic. This section describes what each perso
  │ Student: Priya · 21CS045 · BE CSE · Year 3 · bank ••••4821         │
  │ ⚠ Flags (if any): "Same bill used in SSDF-2026-000087"             │
  │ Category, type, amount, purpose │ Documents (watermarked viewer)   │
- │ Allowance left · yearly cap left · past claims · open bills        │
+ │ Allowance left · past claims · open bills        │
  │ [Approve] [Approve part ₹__] [Reject + reason] [Ask info]          │
  │ [Conflict of interest]   [Message student]                         │
  └───────────────────────────────┬────────────────────────────────────┘
@@ -768,7 +762,7 @@ Sections 2–8 describe the system logic. This section describes what each perso
 | users | id, person_id, role, status, password_hash, totp settings |
 | sessions, otp_attempts | user, device, time, result |
 | programs | name, course_length |
-| students | user_id, student_id (unique), program, passing_year, income_band, flagged |
+| students | user_id, student_id (unique), program, passing_year, flagged |
 | roll_list_entries | student_id, name, program, passing_year, import_batch |
 | enrolment_applications | student, attempt_no, status, reviewed_by, reason |
 | bank_accounts / bank_account_versions | student, holder_name, account (encrypted), ifsc, upi_id, proof_file, name_checked_by, verified_at, cooling_off_until |
@@ -865,7 +859,7 @@ Notifications are built as part of every phase, not left to the end.
 
 ## 18. Open decisions
 1. Names of the owner(s), sponsors and the grievance officer
-2. Income bands and the priority rule (section 2)
+2. The waiting-for-funds priority rule (section 6)
 3. Regional languages, and the phase they arrive in
 4. 80G / 12A / FCRA (CA to confirm)
 5. Which categories are paid to institutions, and which institutions are registered payees
@@ -874,8 +868,6 @@ Notifications are built as part of every phase, not left to the end.
 8. Final confirmation of all **[default]** values after the cost survey:
    - Two-approver threshold ₹10,000
    - Approver daily cap ₹50,000
-   - Student yearly cap ₹50,000
-   - Emergency cap ₹25,000
    - Bill grace period 14 days
    - One unbilled advance per student
    - Two auto-approvals per student per month
@@ -902,7 +894,7 @@ Notifications are built as part of every phase, not left to the end.
 | Timers | Partly approved no reply 7 d → CANCELLED; INFO REQUESTED 14 d, DRAFT 30 d, WAITING FOR FUNDS 60 d expiry |
 | Recurring | Monthly confirmation required; stops on status change or category retirement |
 | Fraud | Same file or bill number on a second claim → flagged; payment held during bank cooling-off; old contact details alerted |
-| Allowance and caps | Reserve, use and release; per-period Max; yearly cap blocks the form; submitted-year rule; two tabs at once can't pass the cap |
+| Allowance and caps | Reserve, use and release; per-period Max; submitted-year rule; two tabs at once can't pass the period Max |
 | **Manual payments** | Record payment → PAID (unconfirmed); same UTR twice rejected; second payment for the same claim rejected; two sponsors recording at once → only one succeeds; confirmer = payer refused; statement line auto-confirms; unmatched debit alerts; unconfirmed > 3 days alerts; returned payment → RETURNED → READY TO PAY after bank fix; "Not received" opens a ticket |
 | **Donations** | Recorded donation not in the pool until confirmed; same bank ref twice rejected; unmatched credit shown as "record this donation"; receipt generated |
 | **Pause and limits** | 1 sponsor pauses → Ready to pay locked; resume needs 2 different persons; daily limit reached → stop + alert; same bank account > 3 times in 7 days → hold |
@@ -944,7 +936,7 @@ Severity:
 | # | Situation | Fix |
 |---|---|---|
 | 9 | Two approvals at once both reserve from the same pool → pool goes negative | Reservation is a single locked transaction; the database refuses a negative available balance |
-| 10 | A student submits from 2 tabs at once → both pass the yearly cap | Lock per student at submit; the cap is checked inside the same transaction |
+| 10 | A student submits from 2 tabs at once → both pass the category/period Max | Lock per student at submit; the Max is checked inside the same transaction |
 | 11 | A student submits at the exact second the bill block starts | The block is checked inside the submit transaction |
 | 12 | Two sponsors press "Record payment" at once | READY TO PAY → PAID in one locked step; the second one fails |
 | 13 | The same person acts twice in a two-person action using two accounts | Check **distinct persons**, not accounts |
